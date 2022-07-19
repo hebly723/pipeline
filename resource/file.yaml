@@ -1,0 +1,141 @@
+tasks:
+  - machines:
+      - second
+    atoms:
+      - description: 普通用户将文件传入非结构化数据集内
+        plugin: FILE
+        url: http://10.72.1.22:32391/ai-datalake/api/v1/files
+        body: '{"chunkSize":584192,"csvHead":false,"currentChunk":1,"currentFile":1,"dataset":"${dataset}","dataspace":"${dataspace}","filePath":"平台3.3.0集群部署以及注意事项.doc","fileSize":584192,"format":"doc","md5":"${md5{平台3.3.0集群部署以及注意事项.doc}}","totalChunk":1,"totalFile":1,"transactionId":1001}'
+        file: 平台3.3.0集群部署以及注意事项.doc
+        cookie: ${kkkk_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+
+      - description: 管理员将同名文件传入非结构化数据集内
+        plugin: POSTFILE
+        url: http://10.72.1.22:32391/ai-datalake/api/v1/files
+        body: '{"chunkSize":584192,"csvHead":false,"currentChunk":1,"currentFile":1,"dataset":"${dataset}","dataspace":"${dataspace}","filePath":"note.doc","fileSize":584192,"format":"doc","md5":"${md5{note.doc}}","totalChunk":1,"totalFile":1,"transactionId":1002}'
+        file: note.doc
+        cookie: ${admin_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+
+      - description: 管理员将文件传入非结构化数据集内
+        plugin: POSTFILE
+        url: http://10.72.1.22:32391/ai-datalake/api/v1/files
+        body: '{"chunkSize":584192,"csvHead":false,"currentChunk":1,"currentFile":1,"dataset":"${dataset}","dataspace":"${dataspace}","filePath":"平台3.3.0集群部署以及注意事项.doc","fileSize":584192,"format":"doc","md5":"${md5{平台3.3.0集群部署以及注意事项.doc}}","totalChunk":1,"totalFile":1,"transactionId":1001}'
+        file: 平台3.3.0集群部署以及注意事项.doc
+        cookie: ${admin_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+      - command: sleep 10
+      - description: 普通用户下载刚刚上传的文件
+        plugin: GETFILE
+        url: http://10.72.1.22:32391/ai-datalake/api/v1/files?dataset=${dataset}&dataspace=${dataspace}&filePath=files/note.doc
+        file: 下载的文件1.doc
+        cookie: ${kkkk_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+
+      - command: mc ls aip/aip/${dataspace}/${dataset}/files/
+
+      - description: 管理员将同名文件传入非结构化数据集内
+        plugin: POSTFILE
+        url: http://10.72.1.22:32391/ai-datalake/api/v1/files
+        body: '{"chunkSize":584192,"csvHead":false,"currentChunk":1,"currentFile":1,"dataset":"${dataset}2","dataspace":"${dataspace}5","filePath":"note.doc","fileSize":584192,"format":"doc","md5":"${md5{note.doc}}","totalChunk":1,"totalFile":1,"transactionId":1002}'
+        file: note.doc
+        cookie: ${admin_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+
+      - command: sleep 10
+      - description: 管理员下载刚刚上传的文件
+        plugin: GETFILE
+        url: http://10.72.1.22:32391/ai-datalake/api/v1/files?dataset=${dataset}2&dataspace=${dataspace}5&filePath=files/note.doc
+        file: 下载的文件2.doc
+        cookie: ${admin_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+
+
+      - plugin: GETFILE # 管理员下载刚刚上传的文件
+        url: http://10.72.1.22:32391/ai-datalake/api/v1/files?dataset=endpoint_security_log&dataspace=a0ac&filePath=tables/data_table/dt=2022-07-09/part-00000-f0db6613-09d4-42ee-bdfc-e96e5d6f29e4.c000.snappy.parquet
+        file: 6e5d6f29e4.c000.snappy.parquet
+        cookie: ${admin_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+
+      - plugin: POST # 管理员下载刚刚上传的文件
+        url: http://10.72.1.22:31028/ai-datalake/api/v1/tables/query
+        body: '{"dataset": "endpoint_security_log","dataspace": "9d30","querySql": "select * from data_table"}'
+        cookie: ${admin_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+
+
+      - plugin: GET
+        url: http://10.72.1.22:31028/ai-datalake/api/v1/tables/query/379/
+        cookie: ${admin_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+
+      - command: mc ls aip/aip/${dataspace}5/${dataset}2/files/
+
+      - plugin: POSTFILE # 管理员将文件传入结构化数据集内
+        url: http://10.72.1.22:32391/ai-datalake/api/v1/files
+        body: '{"chunkSize":584192,"csvHead":false,"currentChunk":1,"currentFile":1,"dataset":"${dataset}J","dataspace":"${dataspace}","filePath":"note.doc","fileSize":584192,"format":"doc","md5":"${md5{平台3.3.0集群部署以及注意事项.doc}}","totalChunk":1,"totalFile":1,"transactionId":1302}'
+        file: note.doc
+        cookie: ${admin_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false
+      - command: sleep 10
+      - plugin: GETFILE # 普通用户下载刚刚上传的文件
+        url: http://10.72.1.22:32391/ai-datalake/api/v1/files?dataset=${dataset}&dataspace=${dataspace}J&filePath=files/note.doc
+        file: 下载的文件3.doc
+        cookie: ${admin_cookie}
+        extract:
+          type: json
+          result:
+            - key: success
+              name: success
+              assert: false

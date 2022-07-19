@@ -1,0 +1,58 @@
+machines:
+  second:
+    server: 10.72.1.22:22
+    user: root
+    password: ssh@AIPSZ4
+tasks:
+  - machines:
+      - second
+    atoms:
+      - path: /root
+        command: k=`cat /proc/sys/kernel/random/uuid`;mkdir k;cd k;pwd
+        extract:
+          type: split
+          separator: "\n"
+          result:
+            - index: 0
+              name: workspace
+      - path: ${workspace}
+        command: git clone git@code.sangfor.org:AIP/AIP4.0/libaip-sdk.git;export PYTHONPATH=${workspace}/libaip-sdk && export AI_DEBUG=2
+      - plugin: upload
+        file: login.py
+      - path: /root/zzjTest/libaip-sdk/aip/tests
+        command: python3 login.py
+      - path: /root
+        command: cat /tmp/aip/cookie/test1.cookie
+        extract:
+          type: json
+          result:
+            - key: cookie
+              name: test1_cookie
+      - path: /root
+        command: cat /tmp/aip/cookie/test2.cookie
+        extract:
+          type: json
+          result:
+            - key: cookie
+              name: test2_cookie
+      - path: /root
+        command: cat /tmp/aip/cookie/admin.cookie
+        extract:
+          type: json
+          result:
+            - key: cookie
+              name: admin_cookie
+      - command: cat /proc/sys/kernel/random/uuid # 生成工作空间
+        extract:
+          type: split
+          separator: "-"
+          result:
+            - index: 3
+              name: dataspace
+      - command: cat /proc/sys/kernel/random/uuid
+        extract:
+          type: split
+          separator: "-"
+          result:
+            - index: 1
+              name: dataset
