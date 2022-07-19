@@ -11,7 +11,9 @@ import (
 	"pipeline/plugins.go"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -30,7 +32,10 @@ type Task struct {
 }
 
 type Atom struct {
-	Description string        `json:"description"`
+	Description string        `json:"description,omitempty"`
+	Loops       int           `json:"times,omitempty"`
+	Timeouts    int           `json:"timeouts,omitempty"`
+	Static      bool          `json:"static,omitempty"`
 	Path        string        `json:"path,omitempty"`
 	Plugin      string        `json:"plugin,omitempty"`
 	Body        string        `json:"body,omitempty"`
@@ -41,7 +46,7 @@ type Atom struct {
 	Wait        bool          `json:"wait,omitempty"`
 	Extract     ExtractParams `json:"extract,omitempty"`
 	Dir         string        `json:"dir,omitempty"`
-	Newf        string        `json:"newf,omitempt"`
+	Newf        string        `json:"newf,omitempty"`
 }
 
 type ExtractParams struct {
@@ -66,7 +71,7 @@ type Machine struct {
 
 func main() {
 	params := make(map[string]map[string]string)
-	config := readConfig("./")
+	config := readConfig(".")
 	initParams(params, config.Machines)
 	fmt.Printf("map初始化:%+v\n", params)
 	doPipeline(config, params)
@@ -103,7 +108,7 @@ func readConfig(dirname string) Config {
 	}
 
 	sort.SliceStable(files, func(i, j int) bool {
-		if files[i].Name() > files[j].Name() {
+		if files[i].Name() < files[j].Name() {
 			return true
 		}
 		return false
@@ -126,9 +131,10 @@ func readConfig(dirname string) Config {
 		if err1 != nil {
 			fmt.Println("error", err1)
 		}
+		// fmt.Printf("%+v\n", temp)
 		// 合并到结构体中
 		st.Add(temp)
-		fmt.Printf("%v\t读取成功!\n", f.Name())
+		// fmt.Printf("%v\t读取成功!\n", f.Name())
 	}
 
 	// fmt.Printf("%+v\n", st)
@@ -139,12 +145,13 @@ func (c *Config) Add(newConfig Config) {
 	for k, v := range newConfig.Machines {
 		c.Machines[k] = v
 	}
-	c.Tasks = append(newConfig.Tasks, newConfig.Tasks...)
+	c.Tasks = append(c.Tasks, newConfig.Tasks...)
+	// fmt.Printf("分割线-----\n%+v\tadd之后的值!\n", c)
 }
 
 func doPipeline(config Config, params map[string]map[string]string) error {
 	for _, v := range config.Tasks {
-		fmt.Printf("%+v\n", v)
+		// fmt.Printf("%+v\n", v)
 		for _, m := range v.Machines {
 			c := config.Machines[m]
 			if err := SSH_do(c.User, c.Password, c.Server, v.Atoms, params, m); err != nil {
@@ -169,7 +176,8 @@ func doPipeline(config Config, params map[string]map[string]string) error {
 }
 
 // 先输出，再使用map存储
-func extractParams(result []byte, e ExtractParams, params map[string]string) {
+func extractParams(result []byte, e ExtractParams, params map[string]string) error {
+	fmt.Printf("执行结果:%+v\n", string(result))
 	if e.Type == "split" {
 		middleResults := strings.Split(string(result), e.Separator)
 		for _, v := range e.Result {
@@ -177,27 +185,28 @@ func extractParams(result []byte, e ExtractParams, params map[string]string) {
 			params[v.Name] = middleResults[v.Index]
 		}
 		// fmt.Println(params)
-		return
+		return nil
 	}
 	if e.Type == "json" {
-		var middleResults map[string]string
+		var middleResults map[string]interface{}
 		if err := json.Unmarshal(result, &middleResults); err != nil {
-			fmt.Printf("json转化时出错!错误为:%+v\n", err)
+			return fmt.Errorf("json转化时出错!错误为:%+v\n", err)
 		}
 		for _, v := range e.Result {
-			params[v.Name] = middleResults[v.Key]
+			params[v.Name] = string(plugins.TransformInterfaceIntoByte(middleResults[v.Key]))
+			fmt.Println("set", v.Name, params[v.Name])
 			if v.Assert != "" {
-				if middleResults[v.Key] != v.Assert {
-					fmt.Println("与测试预期不符")
+				if params[v.Name] != v.Assert {
 					v.AssertResult = false
+					return fmt.Errorf("与测试预期不符")
 				} else {
 					v.AssertResult = true
 				}
 			}
 		}
 		// fmt.Println(params)
-		return
 	}
+	return nil
 }
 
 func SSH_do(user string, password string, ip_port string, atoms []Atom, params map[string]map[string]string, machine string) error {
@@ -210,74 +219,113 @@ func SSH_do(user string, password string, ip_port string, atoms []Atom, params m
 	}
 	defer client.Close()
 	for _, v2 := range atoms {
-		// fmt.Println(v2)
-		var result SshReturn
-		if v2.Plugin != "" && v2.Plugin != "cmd" {
-			var rspBody []byte
-			var err error
-			if v2.Plugin == "POST" || v2.Plugin == "post" {
-				rspBody, err = plugins.Post(
-					[]byte(decodeString(v2.Body, params, machine)),
-					decodeString(v2.URL, params, machine),
-					decodeString(v2.Cookie, params, machine),
-				)
-			}
-			if v2.Plugin == "GET" || v2.Plugin == "get" {
-				rspBody, err = plugins.Get(
-					decodeString(v2.URL, params, machine),
-					decodeString(v2.Cookie, params, machine))
-			}
-			if v2.Plugin == "DELETE" || v2.Plugin == "delete" {
-				rspBody, err = plugins.Delete(
-					decodeString(v2.URL, params, machine),
-					decodeString(v2.Cookie, params, machine))
-			}
-			if v2.Plugin == "PUT" || v2.Plugin == "put" {
-				rspBody, err = plugins.Put(
-					decodeString(v2.URL, params, machine),
-					decodeString(v2.Cookie, params, machine))
-			}
-			if v2.Plugin == "POSTFILE" || v2.Plugin == "postfile" {
-				rspBody, err = plugins.PostFile(
-					decodeString(v2.URL, params, machine),
-					decodeString(v2.File, params, machine),
-					[]byte(decodeString(v2.Body, params, machine)),
-					decodeString(v2.Cookie, params, machine))
-			}
-			if v2.Plugin == "GETFILE" || v2.Plugin == "getfile" {
-				err = plugins.GetFile(
-					decodeString(v2.URL, params, machine),
-					decodeString(v2.File, params, machine),
-					decodeString(v2.Cookie, params, machine))
-			}
-			if strings.ToLower(v2.Plugin) == "upload" {
-				err = plugins.UploadFile(client,
-					decodeString(v2.File, params, machine),
-					decodeString(v2.Dir, params, machine),
-					decodeString(v2.Newf, params, machine))
-			}
-			if strings.ToLower(v2.Plugin) == "download" {
-				err = plugins.DownloadFile(client,
-					decodeString(v2.File, params, machine),
-					decodeString(v2.Dir, params, machine),
-					decodeString(v2.Newf, params, machine))
-			}
-			if err != nil {
-				return err
-			}
-			result.data = rspBody
-		}
-
-		result = ssh_session(v2, client, params, machine)
-		fmt.Println(string(result.data))
-		if v2.Extract.Result != nil {
-			extractParams(result.data, v2.Extract, params[machine])
+		if err := v2.Work(params[machine], client); err != nil {
+			fmt.Printf("执行原子时报错：%v\n", err)
 		}
 	}
 	return nil
 }
 
-func ssh_session(atom Atom, client *ssh.Client, params map[string]map[string]string, machine string) SshReturn {
+func (v2 *Atom) Work(params map[string]string, client *ssh.Client) error {
+	fmt.Printf("atom: %+v\n", v2)
+	beginTime := time.Now()
+	result, err := v2.singleJob(params, client)
+	if v2.Extract.Result != nil {
+		extractParams(result, v2.Extract, params)
+	}
+	fmt.Println(string(result))
+	if v2.Loops == 0 {
+		return err
+	}
+	var wg sync.WaitGroup
+	errCount := 0
+	if err != nil {
+		errCount++
+	}
+	wg.Add(v2.Loops - 1)
+	for i := 1; i < v2.Loops; i++ {
+		time.After(time.Duration(v2.Timeouts) * time.Millisecond)
+		go func() {
+			defer wg.Done()
+			result, err := v2.singleJob(params, client)
+			// fmt.Println(string(result))
+			if v2.Extract.Result != nil {
+				if err := extractParams(result, v2.Extract, params); err != nil {
+					errCount++
+				}
+			}
+			if err != nil {
+				errCount++
+			}
+		}()
+	}
+	wg.Wait()
+	fmt.Printf("成功率: %v%%, 发生错误的次数: %v, 循环总数： %v\n", float64((v2.Loops-errCount)*100)/float64(v2.Loops), errCount, v2.Loops)
+	if v2.Static {
+		fmt.Printf("总用时：%+v\n", (time.Now().Sub(beginTime)))
+	}
+	return nil
+}
+
+func (v2 *Atom) singleJob(params map[string]string, client *ssh.Client) ([]byte, error) {
+	if v2.Plugin != "" && v2.Plugin != "cmd" {
+		pluginID := strings.ToLower(v2.Plugin)
+		if pluginID == "post" {
+			return plugins.Post(
+				[]byte(decodeString(v2.Body, params)),
+				decodeString(v2.URL, params),
+				decodeString(v2.Cookie, params),
+			)
+		}
+		if pluginID == "get" {
+			return plugins.Get(
+				decodeString(v2.URL, params),
+				decodeString(v2.Cookie, params))
+		}
+		if pluginID == "delete" {
+			return plugins.Delete(
+				decodeString(v2.URL, params),
+				decodeString(v2.Cookie, params))
+		}
+		if pluginID == "put" {
+			return plugins.Put(
+				decodeString(v2.URL, params),
+				decodeString(v2.Cookie, params))
+		}
+		if pluginID == "postfile" {
+			return plugins.PostFile(
+				decodeString(v2.URL, params),
+				decodeString(v2.File, params),
+				[]byte(decodeString(v2.Body, params)),
+				decodeString(v2.Cookie, params))
+		}
+		if pluginID == "getfile" {
+			return nil, plugins.GetFile(
+				decodeString(v2.URL, params),
+				decodeString(v2.File, params),
+				decodeString(v2.Cookie, params))
+		}
+		if pluginID == "upload" {
+			return nil, plugins.UploadFile(client,
+				decodeString(v2.File, params),
+				decodeString(v2.Dir, params),
+				decodeString(v2.Newf, params))
+		}
+		if pluginID == "download" {
+			return nil, plugins.DownloadFile(client,
+				decodeString(v2.File, params),
+				decodeString(v2.Dir, params),
+				decodeString(v2.Newf, params))
+		}
+	}
+	var result SshReturn
+	if v2.Command != "" {
+		result = ssh_session(*v2, client, params)
+	}
+	return result.data, nil
+}
+
+func ssh_session(atom Atom, client *ssh.Client, params map[string]string) SshReturn {
 	var result SshReturn
 	if session, err := client.NewSession(); err == nil {
 		defer session.Close()
@@ -287,7 +335,7 @@ func ssh_session(atom Atom, client *ssh.Client, params map[string]map[string]str
 		if atom.Path != "" {
 			commandStr = commandStr + "cd " + atom.Path + " && "
 		}
-		session.Run(decodeString(commandStr+atom.Command, params, machine))
+		session.Run(decodeString(commandStr+atom.Command, params))
 		if atom.Wait {
 			for result.data == nil {
 				<-time.After(1 * time.Second)
@@ -307,13 +355,13 @@ func (s *SshReturn) Write(p []byte) (n int, err error) {
 }
 
 // 正则表达式解码
-func decodeString(str string, params map[string]map[string]string, machine string) string {
-	re := regexp.MustCompile(`\$\{(.*?)\}`)
-	match := re.FindAllStringSubmatch(str, -1)
+func decodeString(str string, params map[string]string) string {
 	result := decodeFunction(str)
-	// fmt.Printf("源:%+v, 匹配结果:%+v\n", str, match)
+	re := regexp.MustCompile(`\$\{(.*?)\}`)
+	match := re.FindAllStringSubmatch(result, -1)
+	// fmt.Printf("变量源:%+v, 匹配结果:%+v\n", str, match)
 	for _, v := range match {
-		result = strings.ReplaceAll(result, v[0], params[machine][v[1]])
+		result = strings.ReplaceAll(result, v[0], params[v[1]])
 	}
 	fmt.Println(result)
 	return result
@@ -323,9 +371,19 @@ func decodeFunction(str string) string {
 	re := regexp.MustCompile(`\$\{md5\{(.*?)\}\}`)
 	match := re.FindAllStringSubmatch(str, -1)
 	result := str
-	// fmt.Printf("源:%+v, 匹配结果:%+v\n", str, match)
+	// fmt.Printf("md5源:%+v, 匹配结果:%+v\n", str, match)
 	for _, v := range match {
 		result = strings.ReplaceAll(result, v[0], functions.GetFileMd5(v[1]))
+	}
+
+	re = regexp.MustCompile(`\$\{uuid\{(.*?)\}\}`)
+	match = re.FindAllStringSubmatch(str, -1)
+	result = str
+	// fmt.Printf("uuid源:%+v, 匹配结果:%+v\n", str, match)
+	for _, v := range match {
+		fmt.Println(v)
+		length, _ := strconv.Atoi(v[1])
+		result = strings.ReplaceAll(result, v[0], functions.GetUUID(length))
 	}
 	return result
 }

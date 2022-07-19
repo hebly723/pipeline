@@ -162,7 +162,7 @@ func createFileBuffer(filePath string, body []byte) (string, io.Reader, error) {
 
 	for k, v := range jsonData {
 		p1w, _ := bw.CreateFormField(k)
-		p1w.Write(transformByte(v))
+		p1w.Write(TransformInterfaceIntoByte(v))
 	}
 
 	// file part1
@@ -174,7 +174,7 @@ func createFileBuffer(filePath string, body []byte) (string, io.Reader, error) {
 	return bw.FormDataContentType(), buf, nil
 }
 
-func transformByte(value interface{}) []byte {
+func TransformInterfaceIntoByte(value interface{}) []byte {
 	k := reflect.TypeOf(value).Kind()
 	// fmt.Println(k)
 	switch k {

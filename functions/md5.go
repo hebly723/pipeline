@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+
+	"github.com/google/uuid"
 )
 
 // 获取文件的md5码
@@ -23,4 +26,9 @@ func GetFileMd5(filename string) string {
 	io.Copy(md5h, pFile)
 
 	return hex.EncodeToString(md5h.Sum(nil))
+}
+
+// 获取uuid
+func GetUUID(length int) string {
+	return strings.ReplaceAll(uuid.New().String(), "-", "")[0:length]
 }
