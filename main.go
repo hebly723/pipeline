@@ -8,7 +8,7 @@ import (
 	"os"
 	"path"
 	"pipeline/functions"
-	"pipeline/plugins.go"
+	"pipeline/plugins"
 	"regexp"
 	"sort"
 	"strconv"
@@ -34,7 +34,7 @@ type Task struct {
 type Atom struct {
 	Description string        `json:"description,omitempty"`
 	Loops       int           `json:"times,omitempty"`
-	Timeouts    int           `json:"timeouts,omitempty"`
+	Timeout     int           `json:"timeout,omitempty"`
 	Static      bool          `json:"static,omitempty"`
 	Path        string        `json:"path,omitempty"`
 	Plugin      string        `json:"plugin,omitempty"`
@@ -244,7 +244,7 @@ func (v2 *Atom) Work(params map[string]string, client *ssh.Client) error {
 	}
 	wg.Add(v2.Loops - 1)
 	for i := 1; i < v2.Loops; i++ {
-		time.After(time.Duration(v2.Timeouts) * time.Millisecond)
+		<-time.After(time.Duration(v2.Timeout) * time.Millisecond)
 		go func() {
 			defer wg.Done()
 			result, err := v2.singleJob(params, client)

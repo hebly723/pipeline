@@ -1,8 +1,0 @@
-tasks:
-  - machines:
-      - second
-    atoms:
-      - plugin: upload
-        file: ./note.doc
-        TargetPath: /root/
-        TargetFileName: n1.doc
