@@ -21,6 +21,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var AssertArray []Assert
+
+type Assert struct {
+	Description string
+	Assert      string
+	Result      bool
+}
+
 type Config struct {
 	Machines map[string]Machine `json:"machines,omitempty"`
 	Tasks    []Task             `json:"tasks,omitempty"`
@@ -122,13 +130,9 @@ func ReadConfig(dirname string) Config {
 		if err1 != nil {
 			fmt.Println("error", err1)
 		}
-		// fmt.Printf("%+v\n", temp)
 		// 合并到结构体中
 		st.Add(temp)
-		// fmt.Printf("%v\t读取成功!\n", f.Name())
 	}
-
-	// fmt.Printf("%+v\n", st)
 	return st
 }
 
@@ -137,7 +141,6 @@ func (c *Config) Add(newConfig Config) {
 		c.Machines[k] = v
 	}
 	c.Tasks = append(c.Tasks, newConfig.Tasks...)
-	// fmt.Printf("分割线-----\n%+v\tadd之后的值!\n", c)
 }
 
 func DoPipeline(config Config, params map[string]map[string]string) error {
@@ -152,34 +155,37 @@ func DoPipeline(config Config, params map[string]map[string]string) error {
 		}
 	}
 
-	for _, v := range config.Tasks {
-		fmt.Println("用例\t预期\t实际执行结果")
-		for _, a := range v.Atoms {
-			for _, r := range a.Extract.Result {
-				if r.Assert != "" {
-					fmt.Printf("%v\t%v\t%v\n", a.Description, r.Assert, r.AssertResult)
-				}
-			}
-		}
+	fmt.Println("用例\t预期\t实际执行结果")
+	for _, v := range AssertArray {
+		fmt.Printf("%v\t%v\t%v\n", v.Description, v.Assert, v.Result)
 	}
 
 	return nil
 }
 
 // 先输出，再使用map存储
-func extractParams(result []byte, e ExtractParams, params map[string]string) error {
+func extractParams(result []byte, e ExtractParams, params map[string]string,
+	description string) error {
 	fmt.Printf("执行结果:%+v\n", string(result))
 	if e.Type == "split" {
 		middleResults := strings.Split(string(result), e.Separator)
-		for i, v := range e.Result {
+		for _, v := range e.Result {
 			fmt.Println("set", v.Name, middleResults[v.Index])
 			params[v.Name] = middleResults[v.Index]
 			if v.Assert != "" {
 				if params[v.Name] != v.Assert {
-					v.AssertResult = false
+					AssertArray = append(AssertArray, Assert{
+						Description: description,
+						Assert:      v.Assert,
+						Result:      false,
+					})
 					return fmt.Errorf("与测试预期不符")
 				} else {
-					e.Result[i].AssertResult = true
+					AssertArray = append(AssertArray, Assert{
+						Description: description,
+						Assert:      v.Assert,
+						Result:      true,
+					})
 				}
 			}
 		}
@@ -190,15 +196,23 @@ func extractParams(result []byte, e ExtractParams, params map[string]string) err
 		if err := json.Unmarshal(result, &middleResults); err != nil {
 			return fmt.Errorf("json转化时出错!错误为:%+v\n", err)
 		}
-		for i, v := range e.Result {
+		for _, v := range e.Result {
 			params[v.Name] = string(plugins.TransformInterfaceIntoByte(middleResults[v.Key]))
 			fmt.Println("set", v.Name, params[v.Name])
 			if v.Assert != "" {
 				if params[v.Name] != v.Assert {
-					v.AssertResult = false
+					AssertArray = append(AssertArray, Assert{
+						Description: description,
+						Assert:      v.Assert,
+						Result:      false,
+					})
 					return fmt.Errorf("与测试预期不符")
 				} else {
-					e.Result[i].AssertResult = true
+					AssertArray = append(AssertArray, Assert{
+						Description: description,
+						Assert:      v.Assert,
+						Result:      true,
+					})
 				}
 			}
 		}
@@ -228,7 +242,7 @@ func (v2 *Atom) Work(params map[string]string, client *ssh.Client) error {
 	beginTime := time.Now()
 	result, err := v2.singleJob(params, client)
 	if v2.Extract.Result != nil {
-		extractParams(result, v2.Extract, params)
+		extractParams(result, v2.Extract, params, v2.Description)
 	}
 	fmt.Println(string(result))
 	if v2.Loops == 0 {
@@ -246,7 +260,7 @@ func (v2 *Atom) Work(params map[string]string, client *ssh.Client) error {
 			defer wg.Done()
 			result, err := v2.singleJob(params, client)
 			if v2.Extract.Result != nil {
-				if err := extractParams(result, v2.Extract, params); err != nil {
+				if err := extractParams(result, v2.Extract, params, v2.Description); err != nil {
 					errCount++
 				}
 			}
