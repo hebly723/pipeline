@@ -171,11 +171,18 @@ func extractParams(result []byte, e ExtractParams, params map[string]string) err
 	fmt.Printf("执行结果:%+v\n", string(result))
 	if e.Type == "split" {
 		middleResults := strings.Split(string(result), e.Separator)
-		for _, v := range e.Result {
+		for i, v := range e.Result {
 			fmt.Println("set", v.Name, middleResults[v.Index])
 			params[v.Name] = middleResults[v.Index]
+			if v.Assert != "" {
+				if params[v.Name] != v.Assert {
+					v.AssertResult = false
+					return fmt.Errorf("与测试预期不符")
+				} else {
+					e.Result[i].AssertResult = true
+				}
+			}
 		}
-		// fmt.Println(params)
 		return nil
 	}
 	if e.Type == "json" {
@@ -183,7 +190,7 @@ func extractParams(result []byte, e ExtractParams, params map[string]string) err
 		if err := json.Unmarshal(result, &middleResults); err != nil {
 			return fmt.Errorf("json转化时出错!错误为:%+v\n", err)
 		}
-		for _, v := range e.Result {
+		for i, v := range e.Result {
 			params[v.Name] = string(plugins.TransformInterfaceIntoByte(middleResults[v.Key]))
 			fmt.Println("set", v.Name, params[v.Name])
 			if v.Assert != "" {
@@ -191,11 +198,10 @@ func extractParams(result []byte, e ExtractParams, params map[string]string) err
 					v.AssertResult = false
 					return fmt.Errorf("与测试预期不符")
 				} else {
-					v.AssertResult = true
+					e.Result[i].AssertResult = true
 				}
 			}
 		}
-		// fmt.Println(params)
 	}
 	return nil
 }
@@ -239,7 +245,6 @@ func (v2 *Atom) Work(params map[string]string, client *ssh.Client) error {
 		go func() {
 			defer wg.Done()
 			result, err := v2.singleJob(params, client)
-			// fmt.Println(string(result))
 			if v2.Extract.Result != nil {
 				if err := extractParams(result, v2.Extract, params); err != nil {
 					errCount++
@@ -345,12 +350,10 @@ func (s *SshReturn) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// 正则表达式解码
 func decodeString(str string, params map[string]string) string {
 	result := decodeFunction(str)
 	re := regexp.MustCompile(`\$\{(.*?)\}`)
 	match := re.FindAllStringSubmatch(result, -1)
-	// fmt.Printf("变量源:%+v, 匹配结果:%+v\n", str, match)
 	for _, v := range match {
 		result = strings.ReplaceAll(result, v[0], params[v[1]])
 	}
@@ -362,7 +365,6 @@ func decodeFunction(str string) string {
 	re := regexp.MustCompile(`\$\{md5\{(.*?)\}\}`)
 	match := re.FindAllStringSubmatch(str, -1)
 	result := str
-	// fmt.Printf("md5源:%+v, 匹配结果:%+v\n", str, match)
 	for _, v := range match {
 		result = strings.ReplaceAll(result, v[0], functions.GetFileMd5(v[1]))
 	}
@@ -370,9 +372,7 @@ func decodeFunction(str string) string {
 	re = regexp.MustCompile(`\$\{uuid\{(.*?)\}\}`)
 	match = re.FindAllStringSubmatch(str, -1)
 	result = str
-	// fmt.Printf("uuid源:%+v, 匹配结果:%+v\n", str, match)
 	for _, v := range match {
-		fmt.Println(v)
 		length, _ := strconv.Atoi(v[1])
 		result = strings.ReplaceAll(result, v[0], functions.GetUUID(length))
 	}
