@@ -7,14 +7,15 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"pipeline/functions"
-	"pipeline/plugins"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hebly723/pipeline/functions"
+	"github.com/hebly723/pipeline/plugins"
 
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"

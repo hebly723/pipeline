@@ -1,4 +1,4 @@
-module pipeline
+module github.com/hebly723/pipeline
 
 go 1.17
 

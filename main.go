@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"pipeline/pipeline"
+
+	"github.com/hebly723/pipeline/pipeline"
 )
 
 func main() {
