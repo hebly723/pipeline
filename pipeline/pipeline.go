@@ -247,30 +247,42 @@ func (v2 *Atom) Work(params map[string]string, client *ssh.Client) error {
 	fmt.Println(string(result))
 	if v2.Loops == 0 {
 		return err
-	}
-	var wg sync.WaitGroup
-	errCount := 0
-	if err != nil {
-		errCount++
-	}
-	wg.Add(v2.Loops - 1)
-	for i := 1; i < v2.Loops; i++ {
-		<-time.After(time.Duration(v2.Timeout) * time.Millisecond)
-		go func() {
-			defer wg.Done()
-			result, err := v2.singleJob(params, client)
+	} else if v2.Loops == -1 {
+		for {
+			<-time.After(time.Duration(v2.Timeout) * time.Millisecond)
+			result, _ := v2.singleJob(params, client)
 			if v2.Extract.Result != nil {
-				if err := extractParams(result, v2.Extract, params, v2.Description); err != nil {
-					errCount++
+				if err := extractParams(result, v2.Extract, params, v2.Description); err == nil {
+					break
 				}
 			}
-			if err != nil {
-				errCount++
-			}
-		}()
+		}
+	} else {
+		var wg sync.WaitGroup
+		errCount := 0
+		if err != nil {
+			errCount++
+		}
+		wg.Add(v2.Loops - 1)
+		for i := 1; i < v2.Loops; i++ {
+			<-time.After(time.Duration(v2.Timeout) * time.Millisecond)
+			go func() {
+				defer wg.Done()
+				result, err := v2.singleJob(params, client)
+				if v2.Extract.Result != nil {
+					if err := extractParams(result, v2.Extract, params, v2.Description); err != nil {
+						errCount++
+					}
+				}
+				if err != nil {
+					errCount++
+				}
+			}()
+		}
+		wg.Wait()
+		fmt.Printf("成功率: %v%%, 发生错误的次数: %v, 循环总数： %v\n", float64((v2.Loops-errCount)*100)/float64(v2.Loops), errCount, v2.Loops)
+
 	}
-	wg.Wait()
-	fmt.Printf("成功率: %v%%, 发生错误的次数: %v, 循环总数： %v\n", float64((v2.Loops-errCount)*100)/float64(v2.Loops), errCount, v2.Loops)
 	if v2.Static {
 		fmt.Printf("总用时：%+v\n", (time.Now().Sub(beginTime)))
 	}
