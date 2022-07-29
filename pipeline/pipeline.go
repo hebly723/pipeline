@@ -196,9 +196,16 @@ func extractParams(result []byte, e ExtractParams, params map[string]string,
 		if err := json.Unmarshal(result, &middleResults); err != nil {
 			return fmt.Errorf("json转化时出错!错误为:%+v\n", err)
 		}
+		tempResults := middleResults
 		for _, v := range e.Result {
-			params[v.Name] = string(plugins.TransformInterfaceIntoByte(middleResults[v.Key]))
-			fmt.Println("set", v.Name, params[v.Name])
+			pure := v.Key
+			k := strings.Split(pure, ".")
+			for i := 0; i < len(k)-1; i++ {
+				fmt.Print(k[i], tempResults[k[i]])
+				tempResults = tempResults[k[i]].(map[string]interface{})
+			}
+			pure = k[len(k)-1]
+			params[v.Name] = string(plugins.TransformInterfaceIntoByte(tempResults[pure]))
 			if v.Assert != "" {
 				if params[v.Name] != v.Assert {
 					AssertArray = append(AssertArray, Assert{
@@ -215,6 +222,7 @@ func extractParams(result []byte, e ExtractParams, params map[string]string,
 					})
 				}
 			}
+
 		}
 	}
 	return nil
